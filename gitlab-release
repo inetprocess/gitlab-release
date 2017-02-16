@@ -3,7 +3,7 @@
 import argparse
 import os
 import sys
-from urllib.parse import urljoin
+from urllib.parse import urljoin, quote_plus
 import requests
 
 class GitlabReleaseError(RuntimeError):
@@ -32,10 +32,11 @@ class GitlabRelease:
                 raise GitlabReleaseError('Missing environment variable \'{}\': {}'.format(var, msg))
 
     def get_api_project_url(self):
-        return urljoin(self.env['CI_PROJECT_URL'], '/api/v3/projects/{}%2F{}'.format(
+        project = quote_plus('/'.join((
             self.env['CI_PROJECT_NAMESPACE'],
             self.env['CI_PROJECT_NAME']
-        ))
+        )))
+        return urljoin(self.env['CI_PROJECT_URL'], '/api/v3/projects/{}'.format(project))
 
     def post_file(self, filename):
         url = '/'.join((self.api_project_url, 'uploads'))
@@ -103,11 +104,11 @@ in your project named `GITLAB_ACCESS_TOKEN` with the token you have generated in
 the previous step.
 '''
     )
-    parser.add_argument('--message', default='',
+    parser.add_argument('-m', '--message', default='',
                         help='Markdown message before the files list in the release note')
     parser.add_argument('files', nargs='*',
                         help='Files to link in the release.')
-    parser.add_argument('--debug', action='store_true',
+    parser.add_argument('-d', '--debug', action='store_true',
                         help='Print debug messages')
     args = parser.parse_args()
     try:
