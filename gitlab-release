@@ -55,6 +55,8 @@ class GitlabRelease:
             print(body)
         res = requests.post(url, headers=headers, json=body)
         res.raise_for_status()
+        if self.debug:
+            print(res.content)
         return res.json()
 
     def create_release(self, message, files):
@@ -114,7 +116,7 @@ the previous step.
     try:
         release = GitlabRelease(args.debug)
         info = release.create_release(args.message, args.files)
-        print("Release: {tag_name} created.\n{description}".format(info))
+        print("Release: {tag_name} created.\n{description}".format_map(info))
     except GitlabReleaseError as err:
         print(err)
         sys.exit(1)

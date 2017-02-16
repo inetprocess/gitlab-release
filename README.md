@@ -38,3 +38,9 @@ from your user profile.
 ### 3. Configure your project
 Set a [secret variable](https://docs.gitlab.com/ce/ci/variables/#secret-variables) in your project
 named `GITLAB_ACCESS_TOKEN` with the token you have generated in the previous step.
+
+
+Known Issues
+----
+
+Due to a known bug in GitLab, an error will happen if the project contains a `.`
