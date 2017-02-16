@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# TODO: Add message for missing env vars
 
 import os
 import requests
