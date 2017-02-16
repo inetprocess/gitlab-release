@@ -1,53 +1,119 @@
 #!/usr/bin/env python3
-# TODO: Add message for missing env vars
 
-import os
-import requests
 import argparse
+import os
+import sys
 from urllib.parse import urljoin
+import requests
 
-DEBUG = False
+class GitlabReleaseError(RuntimeError):
+    pass
 
-TAG = os.environ['CI_BUILD_TAG']
-PROJECT_URL = os.environ['CI_PROJECT_URL']
-NAMESPACE = os.environ['CI_PROJECT_NAMESPACE']
-NAME = os.environ['CI_PROJECT_NAME']
-TOKEN = os.environ['PRIVATE_TOKEN']
+class GitlabRelease:
+    def __init__(self, debug=False):
+        self.fetch_env()
+        self.api_project_url = self.get_api_project_url()
+        self.debug = debug
 
+    def fetch_env(self):
+        env = {
+            'CI_BUILD_TAG': 'Releases can only be created on tag build.',
+            'CI_PROJECT_URL': '',
+            'CI_PROJECT_NAMESPACE': '',
+            'CI_PROJECT_NAME': '',
+            'GITLAB_ACCESS_TOKEN': "You must specifiy the private token linked to your GitLab account.\n"
+                                   'You probably need to add a GITLAB_ACCESS_TOKEN variable to your project.',
+        }
+        self.env = {}
+        for var, msg in env.items():
+            try:
+                self.env[var] = os.environ[var]
+            except KeyError:
+                raise GitlabReleaseError('Missing environment variable \'{}\': {}'.format(var, msg))
 
-def post_file(filename):
-    url = '/'.join((get_api_project_url(), 'uploads'))
-    headers = {'PRIVATE-TOKEN': TOKEN}
-    files = { 'file': open(filename, 'rb')}
-    res = requests.post(url, files=files, headers=headers)
-    res.raise_for_status()
-    return res.json()['markdown']
+    def get_api_project_url(self):
+        return urljoin(self.env['CI_PROJECT_URL'], '/api/v3/projects/{}%2F{}'.format(
+            self.env['CI_PROJECT_NAMESPACE'],
+            self.env['CI_PROJECT_NAME']
+        ))
 
-def post_release(message):
-    url = '/'.join((get_api_project_url(), 'repository/tags', TAG, 'release'))
-    headers = {'PRIVATE-TOKEN': TOKEN, 'Content-Type': 'application/json'}
-    body = {'tag_name': TAG, 'description': message }
-    if DEBUG:
-        print(url)
-        print(body)
-    res = requests.post(url, headers=headers, json=body)
-    res.raise_for_status()
+    def post_file(self, filename):
+        url = '/'.join((self.api_project_url, 'uploads'))
+        headers = {'PRIVATE-TOKEN': self.env['GITLAB_ACCESS_TOKEN']}
+        files = {'file': open(filename, 'rb')}
+        res = requests.post(url, files=files, headers=headers)
+        res.raise_for_status()
+        return res.json()['markdown']
 
-def get_api_project_url():
-    return urljoin(PROJECT_URL, '/api/v3/projects/{}%2F{}'.format(NAMESPACE, NAME))
+    def post_release(self, message):
+        url = '/'.join((self.api_project_url, 'repository/tags', self.env['CI_BUILD_TAG'], 'release'))
+        headers = {'PRIVATE-TOKEN': self.env['GITLAB_ACCESS_TOKEN'], 'Content-Type': 'application/json'}
+        body = {'tag_name': self.env['CI_BUILD_TAG'], 'description': message}
+        if self.debug:
+            print(url)
+            print(body)
+        res = requests.post(url, headers=headers, json=body)
+        res.raise_for_status()
+        return res.json()
+
+    def create_release(self, message, files):
+        links = ['* ' + self.post_file(filename) for filename in files]
+        links.insert(0, message)
+        return self.post_release("\n\n".join(links))
 
 
 if __name__ == '__main__':
-    parser = argparse.ArgumentParser()
-    parser.add_argument('--message', default='',
-            help='Markdown message before the files list in the release note')
-    parser.add_argument('file', nargs='*',
-            help='Files to link in the release.')
-    parser.add_argument('--debug', action='store_true',
-            help='Print debug messages')
-    args = parser.parse_args()
-    links = [ '* ' + post_file(filename) for filename in args.file ]
-    links.insert(0, args.message)
-    post_release("\n\n".join(links))
-    print('Release: {} created.'.format(TAG))
+    parser = argparse.ArgumentParser(formatter_class=argparse.RawDescriptionHelpFormatter, description='''
+This program is intended to be used in a GitLab CI job in a Runner with Docker.
 
+### 1. Configure your `.gitlab-ci.yml`
+To make an automatic release you need to add something like this to the file
+`.gitlab-ci.yml` in your project.
+
+```yaml
+stages:
+    - build
+    - publish
+build:
+    stage: build
+    script:
+        - my_build_command
+    artifacts:
+        expire_in: '1 hour'
+        paths:
+            - compiled-$CI_BUILD_TAG.exe
+            - doc-$CI_BUILD_TAG.pdf
+publish:
+    image: inetprocess/gitlab-release
+    stage: publish
+    only:
+        - tags
+    script:
+        - gitlab-release compiled-$CI_BUILD_TAG.exe doc-$CI_BUILD_TAG.pdf
+```
+
+### 2. Generate a personnal access token
+Generate a new [Personal Access Token]
+(https://docs.gitlab.com/ee/api/README.html#personal-access-tokens)
+from your user profile.
+
+### 3. Configure your project
+Set a [secret variable](https://docs.gitlab.com/ce/ci/variables/#secret-variables)
+in your project named `GITLAB_ACCESS_TOKEN` with the token you have generated in
+the previous step.
+'''
+    )
+    parser.add_argument('--message', default='',
+                        help='Markdown message before the files list in the release note')
+    parser.add_argument('files', nargs='*',
+                        help='Files to link in the release.')
+    parser.add_argument('--debug', action='store_true',
+                        help='Print debug messages')
+    args = parser.parse_args()
+    try:
+        release = GitlabRelease(args.debug)
+        info = release.create_release(args.message, args.files)
+        print("Release: {tag_name} created.\n{description}".format(info))
+    except GitlabReleaseError as err:
+        print(err)
+        sys.exit(1)
