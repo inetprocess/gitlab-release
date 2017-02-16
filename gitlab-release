@@ -1,0 +1,52 @@
+#!/usr/bin/env python3
+
+import os
+import requests
+import argparse
+from urllib.parse import urljoin
+
+DEBUG = False
+
+TAG = os.environ['CI_BUILD_TAG']
+PROJECT_URL = os.environ['CI_PROJECT_URL']
+NAMESPACE = os.environ['CI_PROJECT_NAMESPACE']
+NAME = os.environ['CI_PROJECT_NAME']
+TOKEN = os.environ['PRIVATE_TOKEN']
+
+
+def post_file(filename):
+    url = '/'.join((get_api_project_url(), 'uploads'))
+    headers = {'PRIVATE-TOKEN': TOKEN}
+    files = { 'file': open(filename, 'rb')}
+    res = requests.post(url, files=files, headers=headers)
+    res.raise_for_status()
+    return res.json()['markdown']
+
+def post_release(message):
+    url = '/'.join((get_api_project_url(), 'repository/tags', TAG, 'release'))
+    headers = {'PRIVATE-TOKEN': TOKEN, 'Content-Type': 'application/json'}
+    body = {'tag_name': TAG, 'description': message }
+    if DEBUG:
+        print(url)
+        print(body)
+    res = requests.post(url, headers=headers, json=body)
+    res.raise_for_status()
+
+def get_api_project_url():
+    return urljoin(PROJECT_URL, '/api/v3/projects/{}%2F{}'.format(NAMESPACE, NAME))
+
+
+if __name__ == '__main__':
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--message', default='',
+            help='Markdown message before the files list in the release note')
+    parser.add_argument('file', nargs='*',
+            help='Files to link in the release.')
+    parser.add_argument('--debug', action='store_true',
+            help='Print debug messages')
+    args = parser.parse_args()
+    links = [ '* ' + post_file(filename) for filename in args.file ]
+    links.insert(0, args.message)
+    post_release("\n\n".join(links))
+    print('Release: {} created.'.format(TAG))
+
