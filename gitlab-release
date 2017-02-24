@@ -40,29 +40,47 @@ class GitlabRelease:
 
     def post_file(self, filename):
         url = '/'.join((self.api_project_url, 'uploads'))
-        headers = {'PRIVATE-TOKEN': self.env['GITLAB_ACCESS_TOKEN']}
         files = {'file': open(filename, 'rb')}
-        res = requests.post(url, files=files, headers=headers)
-        res.raise_for_status()
+        res = self.request('post', url, files=files)
         return res.json()['markdown']
 
-    def post_release(self, message):
+    def set_release(self, message, update=False):
         url = '/'.join((self.api_project_url, 'repository/tags', self.env['CI_BUILD_TAG'], 'release'))
-        headers = {'PRIVATE-TOKEN': self.env['GITLAB_ACCESS_TOKEN'], 'Content-Type': 'application/json'}
-        body = {'tag_name': self.env['CI_BUILD_TAG'], 'description': message}
+        headers = {'Content-Type': 'application/json'}
+        body = {'description': message}
+        method = 'put' if update else 'post'
+        res = self.request(method, url, headers=headers, json=body)
+        return res.json()
+
+
+    def fetch_release(self):
+        url = '/'.join((self.api_project_url, 'repository/tags', self.env['CI_BUILD_TAG']))
+        res = self.request('get', url)
+        return res.json()['release']
+
+    def request(self, method, url, **kwargs):
+        if 'headers' not in kwargs:
+            kwargs['headers'] = {}
+        kwargs['headers']['PRIVATE-TOKEN'] = self.env['GITLAB_ACCESS_TOKEN']
         if self.debug:
             print(url)
-            print(body)
-        res = requests.post(url, headers=headers, json=body)
+            if 'body' in kwargs['headers']:
+                print(kwargs['headers']['body'])
+        res = requests.request(method, url, **kwargs)
         res.raise_for_status()
         if self.debug:
             print(res.content)
-        return res.json()
+        return res
 
     def create_release(self, message, files):
         links = ['* ' + self.post_file(filename) for filename in files]
         links.insert(0, message)
-        return self.post_release("\n\n".join(links))
+        existing_release = self.fetch_release()
+        update = False
+        if existing_release is not None:
+            links = [existing_release['description'], '---'] + links
+            update = True
+        return self.set_release("\n\n".join(links), update)
 
 
 if __name__ == '__main__':

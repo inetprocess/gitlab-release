@@ -33,7 +33,7 @@ publish:
 
 ### 2. Generate a personnal access token
 Generate a new [Personal Access Token](https://docs.gitlab.com/ee/api/README.html#personal-access-tokens)
-from your user profile.
+from your user profile with the api scope.
 
 ### 3. Configure your project
 Set a [secret variable](https://docs.gitlab.com/ce/ci/variables/#secret-variables) in your project
