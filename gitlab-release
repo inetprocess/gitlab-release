@@ -19,8 +19,7 @@ class GitlabRelease:
         env = {
             'CI_BUILD_TAG': 'Releases can only be created on tag build.',
             'CI_PROJECT_URL': '',
-            'CI_PROJECT_NAMESPACE': '',
-            'CI_PROJECT_NAME': '',
+            'CI_PROJECT_ID': '',
             'GITLAB_ACCESS_TOKEN': "You must specifiy the private token linked to your GitLab account.\n"
                                    'You probably need to add a GITLAB_ACCESS_TOKEN variable to your project.',
         }
@@ -32,11 +31,8 @@ class GitlabRelease:
                 raise GitlabReleaseError('Missing environment variable \'{}\': {}'.format(var, msg))
 
     def get_api_project_url(self):
-        project = quote_plus('/'.join((
-            self.env['CI_PROJECT_NAMESPACE'],
-            self.env['CI_PROJECT_NAME']
-        )))
-        return urljoin(self.env['CI_PROJECT_URL'], '/api/v3/projects/{}'.format(project))
+        return urljoin(self.env['CI_PROJECT_URL'],
+                       '/api/v4/projects/{}'.format(self.env['CI_PROJECT_ID']))
 
     def post_file(self, filename):
         url = '/'.join((self.api_project_url, 'uploads'))
