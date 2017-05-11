@@ -3,6 +3,7 @@
 import argparse
 import os
 import sys
+from distutils.version import StrictVersion
 from urllib.parse import urljoin, quote_plus
 import requests
 
@@ -11,28 +12,45 @@ class GitlabReleaseError(RuntimeError):
 
 class GitlabRelease:
     def __init__(self, debug=False):
-        self.fetch_env()
+        self.env = {}
+        self.fetch_all_env()
         self.api_project_url = self.get_api_project_url()
         self.debug = debug
 
-    def fetch_env(self):
+    def fetch_env_var(self, name, msg):
+        if name not in self.env:
+            try:
+                self.env[name] = os.environ[name]
+            except KeyError:
+                raise GitlabReleaseError('Missing environment variable \'{}\': {}'.format(name, msg))
+        return self.env[name]
+
+    def is_gitlab_v9(self):
+        gl_version = self.fetch_env_var('CI_SERVER_VERSION', '')
+        return StrictVersion(gl_version) >= StrictVersion('9.0.0')
+
+    def get_tag(self):
+        tag_env = 'CI_BUILD_TAG'
+        if self.is_gitlab_v9():
+            tag_env = 'CI_COMMIT_TAG'
+        return self.fetch_env_var(tag_env, 'Releases can only be created on tag build.')
+
+    def fetch_all_env(self):
         env = {
-            'CI_BUILD_TAG': 'Releases can only be created on tag build.',
             'CI_PROJECT_URL': '',
             'CI_PROJECT_ID': '',
             'GITLAB_ACCESS_TOKEN': "You must specifiy the private token linked to your GitLab account.\n"
                                    'You probably need to add a GITLAB_ACCESS_TOKEN variable to your project.',
         }
-        self.env = {}
         for var, msg in env.items():
-            try:
-                self.env[var] = os.environ[var]
-            except KeyError:
-                raise GitlabReleaseError('Missing environment variable \'{}\': {}'.format(var, msg))
+            self.fetch_env_var(var, msg)
 
     def get_api_project_url(self):
+        api_version = 'v3'
+        if self.is_gitlab_v9():
+            api_version = 'v4'
         return urljoin(self.env['CI_PROJECT_URL'],
-                       '/api/v4/projects/{}'.format(self.env['CI_PROJECT_ID']))
+                       '/api/{}/projects/{}'.format(api_version, self.env['CI_PROJECT_ID']))
 
     def post_file(self, filename):
         url = '/'.join((self.api_project_url, 'uploads'))
@@ -41,7 +59,7 @@ class GitlabRelease:
         return res.json()['markdown']
 
     def set_release(self, message, update=False):
-        url = '/'.join((self.api_project_url, 'repository/tags', self.env['CI_BUILD_TAG'], 'release'))
+        url = '/'.join((self.api_project_url, 'repository/tags', self.get_tag(), 'release'))
         headers = {'Content-Type': 'application/json'}
         body = {'description': message}
         method = 'put' if update else 'post'
@@ -50,7 +68,7 @@ class GitlabRelease:
 
 
     def fetch_release(self):
-        url = '/'.join((self.api_project_url, 'repository/tags', self.env['CI_BUILD_TAG']))
+        url = '/'.join((self.api_project_url, 'repository/tags', self.get_tag()))
         res = self.request('get', url)
         return res.json()['release']
 
