@@ -3,7 +3,7 @@
 import argparse
 import os
 import sys
-from distutils.version import StrictVersion
+from distutils.version import LooseVersion
 from urllib.parse import urljoin, quote_plus
 import requests
 
@@ -27,7 +27,7 @@ class GitlabRelease:
 
     def is_gitlab_v9(self):
         gl_version = self.fetch_env_var('CI_SERVER_VERSION', '')
-        return StrictVersion(gl_version) >= StrictVersion('9.0.0')
+        return LooseVersion(gl_version) >= LooseVersion('9.0.0')
 
     def get_tag(self):
         tag_env = 'CI_BUILD_TAG'
