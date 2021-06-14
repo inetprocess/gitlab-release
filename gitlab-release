@@ -59,10 +59,17 @@ class GitlabRelease:
         return res.json()['markdown']
 
     def set_release(self, message, update=False):
-        url = '/'.join((self.api_project_url, 'repository/tags', self.get_tag(), 'release'))
+        url = f'{self.api_project_url}/releases'
         headers = {'Content-Type': 'application/json'}
         body = {'description': message}
-        method = 'put' if update else 'post'
+
+        if update:
+            method = 'put'
+            url += '/' + self.get_tag()
+        else:
+            method = 'post'
+            body['tag_name'] = self.get_tag()
+
         res = self.request(method, url, headers=headers, json=body)
         return res.json()
 
